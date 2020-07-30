@@ -1,9 +1,8 @@
-﻿using AzureSign.Core;
+﻿using CloudSign.Core;
+using Google.Cloud.Kms.V1;
 using McMaster.Extensions.CommandLineUtils;
 using McMaster.Extensions.CommandLineUtils.Abstractions;
 using Microsoft.Extensions.Logging;
-
-using RSAKeyVaultProvider;
 
 using System;
 using System.Collections.Generic;
@@ -15,32 +14,17 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 
-using static AzureSignTool.HRESULT;
+using static CloudSignTool.HRESULT;
 
-namespace AzureSignTool
+namespace CloudSignTool
 {
     internal sealed class SignCommand
     {
-        [Option("-kvu | --azure-key-vault-url", "The URL to an Azure Key Vault.", CommandOptionType.SingleValue), UriValidator, Required]
-        public string KeyVaultUri { get; set; }
+        [Option("-k | --gkms-key", "The google-cloud resource-id to use.", CommandOptionType.SingleValue), Required]
+        public string KeyProjectId { get; set; }
 
-        [Option("-kvi | --azure-key-vault-client-id", "The Client ID to authenticate to the Azure Key Vault.", CommandOptionType.SingleValue)]
-        public (bool Present, string Value) KeyVaultClientId { get; set; }
-
-        [Option("-kvs | --azure-key-vault-client-secret", "The Client Secret to authenticate to the Azure Key Vault.", CommandOptionType.SingleValue)]
-        public (bool Present, string Value) KeyVaultClientSecret { get; set; }
-
-        [Option("-kvt | --azure-key-vault-tenant-id", "The Tenand Id to authenticate to the Azure Key Vault.", CommandOptionType.SingleValue)]
-        public (bool Present, string Value) KeyVaultTenantId { get; set; }
-
-        [Option("-kvc | --azure-key-vault-certificate", "The name of the certificate in Azure Key Vault.", CommandOptionType.SingleValue), Required]
-        public string KeyVaultCertificate { get; set; }
-
-        [Option("-kva | --azure-key-vault-accesstoken", "The Access Token to authenticate to the Azure Key Vault.", CommandOptionType.SingleValue)]
-        public (bool Present, string Value) KeyVaultAccessToken { get; set; }
-
-        [Option("-kvm | --azure-key-vault-managed-identity", CommandOptionType.NoValue)]
-        public bool UseManagedIdentity { get; set; }
+        [Option("-kac | --gkms-app-credentials", "The path to google-app-credentials.", CommandOptionType.SingleValue)]
+        public (bool Present, string Value) KeyCredentials { get; set; }
 
         [Option("-d | --description", "Provide a description of the signed content.", CommandOptionType.SingleValue)]
         public string Description { get; set; }
@@ -55,14 +39,10 @@ namespace AzureSignTool
         [AllowedValues("sha1", "sha256", "sha384", "sha512", IgnoreCase = true)]
         public HashAlgorithmName TimestampDigestAlgorithm { get; set; } = HashAlgorithmName.SHA256;
 
-        [Option("-fd | --file-digest", "The digest algorithm to hash the file with.", CommandOptionType.SingleValue)]
-        [AllowedValues("sha1", "sha256", "sha384", "sha512", IgnoreCase = true)]
-        public HashAlgorithmName FileDigestAlgorithm { get; set; } = HashAlgorithmName.SHA256;
-
         [Option("-t | --timestamp-authenticode", "Specify the timestamp server's URL. If this option is not present, the signed file will not be timestamped.", CommandOptionType.SingleValue), UriValidator]
         public (bool Present, string Uri) AuthenticodeTimestamp { get; set; }
 
-        [Option("-ac | --additional-certificates", "Specify one or more certificates to include in the public certificate chain.", CommandOptionType.MultipleValue), FileExists]
+        [Option("-ac | --additional-certificates", "Specify one or more certificates to include in the public certificate chain.", CommandOptionType.MultipleValue), FileExists, Required]
         public string[] AdditionalCertificates { get; set; } = Array.Empty<string>();
 
         [Option("-v | --verbose", "Include additional output.", CommandOptionType.NoValue)]
@@ -131,6 +111,10 @@ namespace AzureSignTool
 
         private ValidationResult OnValidate(ValidationContext context, CommandLineContext appContext)
         {
+            if (!CryptoKeyVersionName.TryParse(KeyProjectId, out _))
+            {
+                return new ValidationResult("The provided gkms-key resource id couldn't be parsed");
+            }
             if (PageHashing && NoPageHashing)
             {
                 return new ValidationResult("Cannot use '--page-hashing' and '--no-page-hashing' options together.", new[] { nameof(NoPageHashing), nameof(PageHashing) });
@@ -139,29 +123,12 @@ namespace AzureSignTool
             {
                 return new ValidationResult("Cannot use '--quiet' and '--verbose' options together.", new[] { nameof(NoPageHashing), nameof(PageHashing) });
             }
-            if (!OneTrue(KeyVaultAccessToken.Present, KeyVaultClientId.Present, UseManagedIdentity))
-            {
-                return new ValidationResult("One of '--azure-key-vault-accesstoken', '--azure-key-vault-client-id' or '--azure-key-vault-managed-identity' must be supplied.", new[] { nameof(KeyVaultAccessToken), nameof(KeyVaultClientId) });
-            }
 
             if (Rfc3161Timestamp.Present && AuthenticodeTimestamp.Present)
             {
                 return new ValidationResult("Cannot use '--timestamp-rfc3161' and '--timestamp-authenticode' options together.", new[] { nameof(Rfc3161Timestamp), nameof(AuthenticodeTimestamp) });
             }
 
-            if (KeyVaultClientId.Present && !KeyVaultClientSecret.Present)
-            {
-                return new ValidationResult("Must supply '--azure-key-vault-client-secret' when using '--azure-key-vault-client-id'.", new[] { nameof(KeyVaultClientSecret) });
-            }
-
-            if (KeyVaultClientId.Present && !KeyVaultTenantId.Present)
-            {
-                return new ValidationResult("Must supply '--azure-key-vault-tenant-id' when using '--azure-key-vault-client-id'.", new[] { nameof(KeyVaultTenantId) });
-            }
-            if (UseManagedIdentity && (KeyVaultAccessToken.Present || KeyVaultClientId.Present))
-            {
-                return new ValidationResult("Cannot use '--azure-key-vault-managed-identity' and '--azure-key-vault-accesstoken' or '--azure-key-vault-client-id'", new[] { nameof(UseManagedIdentity) });
-            }
             if (AllFiles.Count == 0)
             {
                 return new ValidationResult("At least one file must be specified to sign.");
@@ -211,18 +178,7 @@ namespace AzureSignTool
                     default:
                         logger.LogError("Failed to include additional certificates.");
                         return E_INVALIDARG;
-                }
-
-                var configuration = new AzureKeyVaultSignConfigurationSet
-                {
-                    AzureKeyVaultUrl = new Uri(KeyVaultUri),
-                    AzureKeyVaultCertificateName = KeyVaultCertificate,
-                    AzureClientId = KeyVaultClientId.Value,
-                    AzureTenantId = KeyVaultTenantId.Value,
-                    AzureAccessToken = KeyVaultAccessToken.Value,
-                    AzureClientSecret = KeyVaultClientSecret.Value,
-                    ManagedIdentity = UseManagedIdentity,
-                };
+                }               
 
                 TimeStampConfiguration timeStampConfiguration;
 
@@ -249,18 +205,6 @@ namespace AzureSignTool
                 {
                     performPageHashing = false;
                 }
-                var configurationDiscoverer = new KeyVaultConfigurationDiscoverer(logger);
-                var materializedResult = await configurationDiscoverer.Materialize(configuration);
-                AzureKeyVaultMaterializedConfiguration materialized;
-                switch (materializedResult)
-                {
-                    case ErrorOr<AzureKeyVaultMaterializedConfiguration>.Ok ok:
-                        materialized = ok.Value;
-                        break;
-                    default:
-                        logger.LogError("Failed to get configuration from Azure Key Vault.");
-                        return E_INVALIDARG;
-                }
                 int failed = 0, succeeded = 0;
                 var cancellationSource = new CancellationTokenSource();
                 console.CancelKeyPress += (_, e) =>
@@ -276,8 +220,10 @@ namespace AzureSignTool
                 }
                 logger.LogTrace("Creating context");
 
-                using (var keyVault =  RSAFactory.Create(materialized.TokenCredential, materialized.KeyId, materialized.PublicCertificate))
-                using (var signer = new AuthenticodeKeyVaultSigner(keyVault, materialized.PublicCertificate, FileDigestAlgorithm, timeStampConfiguration, certificates))
+                KeyManagementServiceClient client = new KeyManagementServiceClientBuilder() { CredentialsPath = KeyCredentials.Value }.Build();
+                CryptoKeyVersionName ckvn = CryptoKeyVersionName.Parse(KeyProjectId);
+
+                using (var signer = new AuthenticodeKeyVaultSigner(client, ckvn, timeStampConfiguration, certificates))
                 {
                     Parallel.ForEach(AllFiles, options, () => (succeeded: 0, failed: 0), (filePath, pls, state) =>
                     {

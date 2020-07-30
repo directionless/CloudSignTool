@@ -1,7 +1,7 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations;
 
-namespace AzureSignTool
+namespace CloudSignTool
 {
     internal class UriValidatorAttribute : ValidationAttribute
     {

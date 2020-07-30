@@ -1,9 +1,9 @@
-﻿using AzureSign.Core.Interop;
+﻿using CloudSign.Core.Interop;
 using System;
 using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
 
-namespace AzureSign.Core
+namespace CloudSign.Core
 {
     internal sealed class MemoryCertificateStore : IDisposable
     {

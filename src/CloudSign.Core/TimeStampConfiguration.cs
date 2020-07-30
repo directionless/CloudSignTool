@@ -1,6 +1,6 @@
 ﻿using System.Security.Cryptography;
 
-namespace AzureSign.Core
+namespace CloudSign.Core
 {
     /// <summary>
     /// Contains configuration for timestamping authenticode signatures.

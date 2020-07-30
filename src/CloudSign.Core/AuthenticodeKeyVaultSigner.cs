@@ -1,4 +1,6 @@
-﻿using AzureSign.Core.Interop;
+﻿using CloudSign.Core.Interop;
+using Google.Cloud.Kms.V1;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Diagnostics;
@@ -6,20 +8,21 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-namespace AzureSign.Core
+namespace CloudSign.Core
 {
     /// <summary>
     /// Signs a file with an Authenticode signature.
     /// </summary>
     public class AuthenticodeKeyVaultSigner : IDisposable
     {
-        private readonly AsymmetricAlgorithm _signingAlgorithm;
+        private readonly string _signingAlgorithm;
         private readonly X509Certificate2 _signingCertificate;
-        private readonly HashAlgorithmName _fileDigestAlgorithm;
         private readonly TimeStampConfiguration _timeStampConfiguration;
         private readonly MemoryCertificateStore _certificateStore;
         private readonly X509Chain _chain;
         private readonly SignCallback _signCallback;
+        private readonly KeyManagementServiceClient _client;
+        private readonly CryptoKeyVersionName _ckvn;
 
 
         /// <summary>
@@ -30,18 +33,18 @@ namespace AzureSign.Core
         /// a private key.
         /// </param>
         /// <param name="signingCertificate">The X509 public certificate for the <paramref name="signingAlgorithm"/>.</param>
-        /// <param name="fileDigestAlgorithm">The digest algorithm to sign the file.</param>
         /// <param name="timeStampConfiguration">The timestamp configuration for timestamping the file. To omit timestamping,
         /// use <see cref="TimeStampConfiguration.None"/>.</param>
         /// <param name="additionalCertificates">Any additional certificates to assist in building a certificate chain.</param>
-        public AuthenticodeKeyVaultSigner(AsymmetricAlgorithm signingAlgorithm, X509Certificate2 signingCertificate,
-            HashAlgorithmName fileDigestAlgorithm, TimeStampConfiguration timeStampConfiguration,
+        public AuthenticodeKeyVaultSigner(KeyManagementServiceClient client, CryptoKeyVersionName ckvn,
+            TimeStampConfiguration timeStampConfiguration,
             X509Certificate2Collection additionalCertificates = null)
         {
-            _fileDigestAlgorithm = fileDigestAlgorithm;
-            _signingCertificate = signingCertificate ?? throw new ArgumentNullException(nameof(signingCertificate));
+            _client = client;
+            _ckvn = ckvn;
+            _signingCertificate = additionalCertificates[0];
             _timeStampConfiguration = timeStampConfiguration ?? throw new ArgumentNullException(nameof(timeStampConfiguration));
-            _signingAlgorithm = signingAlgorithm ?? throw new ArgumentNullException(nameof(signingAlgorithm));
+            _signingAlgorithm = _signingCertificate.SignatureAlgorithm.FriendlyName.Substring(0,6).ToUpper();
             _certificateStore = MemoryCertificateStore.Create();
             _chain = new X509Chain();
             if (additionalCertificates != null)
@@ -52,7 +55,7 @@ namespace AzureSign.Core
             _chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllFlags;
 
 
-            if (!_chain.Build(signingCertificate))
+            if (!_chain.Build(_signingCertificate))
             {
                 throw new InvalidOperationException("Failed to build chain for certificate.");
             }
@@ -149,7 +152,7 @@ namespace AzureSign.Core
                     union: new SIGNER_CERT_UNION(&storeInfo)
                 );
                 var signatureInfo = new SIGNER_SIGNATURE_INFO(
-                    algidHash: AlgorithmTranslator.HashAlgorithmToAlgId(_fileDigestAlgorithm),
+                    algidHash: AlgorithmTranslator.HashAlgorithmToAlgId(_signingAlgorithm),
                     psAuthenticated: IntPtr.Zero,
                     psUnauthenticated: IntPtr.Zero,
                     dwAttrChoice: SignerSignatureInfoAttrChoice.SIGNER_AUTHCODE_ATTR,
@@ -229,18 +232,36 @@ namespace AzureSign.Core
         )
         {
             const int E_INVALIDARG = unchecked((int)0x80070057);
+
             byte[] digest;
-            switch (_signingAlgorithm)
+            Digest tosign = null;
+
+            if (_signingAlgorithm == HashAlgorithmName.SHA256.Name)
             {
-                case RSA rsa:
-                    digest = rsa.SignHash(pDigestToSign, _fileDigestAlgorithm, RSASignaturePadding.Pkcs1);
-                    break;
-                case ECDsa ecdsa:
-                    digest = ecdsa.SignHash(pDigestToSign);
-                    break;
-                default:
-                    return E_INVALIDARG;
+                tosign = new Digest
+                {
+                    Sha256 = ByteString.CopyFrom(pDigestToSign),
+                };
             }
+            else if (_signingAlgorithm == HashAlgorithmName.SHA384.Name)
+            {
+                tosign = new Digest
+                {
+                    Sha384 = ByteString.CopyFrom(pDigestToSign),
+                };
+            }
+            else if (_signingAlgorithm == HashAlgorithmName.SHA512.Name)
+            {
+                tosign = new Digest
+                {
+                    Sha512 = ByteString.CopyFrom(pDigestToSign),
+                };
+            } else
+            {
+                throw new CryptographicException(_signingAlgorithm + " is not supported!");
+            }
+
+            digest = _client.AsymmetricSign(_ckvn, tosign).Signature.ToByteArray();
             var resultPtr = Marshal.AllocHGlobal(digest.Length);
             Marshal.Copy(digest, 0, resultPtr, digest.Length);
             blob.pbData = resultPtr;

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace AzureSignTool
+namespace CloudSignTool
 {
     public abstract class ErrorOr<TValue>
     {

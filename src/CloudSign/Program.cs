@@ -2,9 +2,9 @@
 using System.Runtime.InteropServices;
 using McMaster.Extensions.CommandLineUtils;
 
-using static AzureSignTool.HRESULT;
+using static CloudSignTool.HRESULT;
 
-namespace AzureSignTool
+namespace CloudSignTool
 {
     public class Program
     {

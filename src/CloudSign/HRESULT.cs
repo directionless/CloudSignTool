@@ -1,4 +1,4 @@
-﻿namespace AzureSignTool
+﻿namespace CloudSignTool
 {
     internal static class HRESULT
     {

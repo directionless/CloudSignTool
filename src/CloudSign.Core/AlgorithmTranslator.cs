@@ -1,19 +1,19 @@
 ﻿using System;
 using System.Security.Cryptography;
 
-namespace AzureSign.Core
+namespace CloudSign.Core
 {
     internal static class AlgorithmTranslator
     {
-        public static uint HashAlgorithmToAlgId(HashAlgorithmName hashAlgorithmName)
+        public static uint HashAlgorithmToAlgId(string hashAlgorithmName)
         {
-            if (hashAlgorithmName.Name == HashAlgorithmName.SHA1.Name)
+            if (hashAlgorithmName == HashAlgorithmName.SHA1.Name)
                 return 0x00008004;
-            if (hashAlgorithmName.Name == HashAlgorithmName.SHA256.Name)
+            if (hashAlgorithmName == HashAlgorithmName.SHA256.Name)
                 return 0x0000800c;
-            if (hashAlgorithmName.Name == HashAlgorithmName.SHA384.Name)
+            if (hashAlgorithmName == HashAlgorithmName.SHA384.Name)
                 return 0x0000800d;
-            if (hashAlgorithmName.Name == HashAlgorithmName.SHA512.Name)
+            if (hashAlgorithmName == HashAlgorithmName.SHA512.Name)
                 return 0x0000800e;
             throw new NotSupportedException("The algorithm specified is not supported.");
         }

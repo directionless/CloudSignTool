@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace AzureSign.Core
+namespace CloudSign.Core
 {
     internal enum SipKind
     {

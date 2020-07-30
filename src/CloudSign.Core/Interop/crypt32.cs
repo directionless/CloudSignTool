@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 
-namespace AzureSign.Core.Interop
+namespace CloudSign.Core.Interop
 {
     internal static class crypt32
     {

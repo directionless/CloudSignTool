@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using McMaster.Extensions.CommandLineUtils.Abstractions;
 
-namespace AzureSignTool
+namespace CloudSignTool
 {
     internal class HashAlgorithmNameValueParser : IValueParser
     {
