@@ -1,62 +1,19 @@
-Azure Sign Tool
+Cloud Sign Tool
 ===============
 
-The below README is based on functionality in `main`. For README information about released versions, please see the README for the version's associated tag. The README for the current release can [be found here](https://github.com/vcsjones/AzureSignTool/blob/v2.0.17/README.md).
+Cloud Sign Tool is a fork of Azure Sign Tool to enable the same functionality on google cloud.
 
-Azure Sign Tool is similar to `signtool` in the Windows SDK, with the major difference being that it uses
-Azure Key Vault for performing the signing process. The usage is like `signtool`, except with a limited set
-of options for signing and options for authenticating to Azure Key Vault.
+It works for me and is unlikely to receive many updates.
 
-Example usage:
-
-    AzureSignTool.exe sign -du "https://vcsjones.com" \
-	  -fd sha384 -kvu https://my-vault.vault.azure.net \
-	  -kvi 01234567-abcd-ef012-0000-0123456789ab \
-	  -kvt 01234567-abcd-ef012-0000-0123456789ab \
-	  -kvs <token> \
-	  -kvc my-key-name \
-	  -tr http://timestamp.digicert.com \
-	  -td sha384 \
-	  -v \
-	  -ifl C:\list\of\file\to\sign.txt \
-	  C:\additional\file\to\sign\program1.exe \
-	  C:\additional\file\to\sign\program2.exe
-	  
 	  
 The `--help` or `sign --help` option provides more detail about each parameter.
 
-[A walk-through is available](WALKTHROUGH.md) if you're interested on getting set up from scratch.
-
 ## Parameters
 
-* `--azure-key-vault-url` [short: `-kvu`, required: yes]: A fully qualified URL of the key vault with
-	the certificate that will be used for signing. An example value might be `https://my-vault.vault.azure.net`.
+* `--gkms-key` [short: `-k`, required: yes]: The ressource-ID that will be used for signing
+	An example value might be `projects/myProject/locations/europe-west2/keyRings/code-signing/cryptoKeys/ev/cryptoKeyVersions/1`.
 
-* `--azure-key-vault-client-id` [short: `-kvi`, required: possibly]: This is the client ID used to authenticate to
-	Azure, which will be used to generate an access token. This parameter is not required if an access token is supplied
-	directly with the `--azure-key-vault-accesstoken` option. If this parameter is supplied, `--azure-key-vault-client-secret` and `--azure-key-vault-tenant-id`
-	must be supplied as well.
-
-* `--azure-key-vault-client-secret` [short: `-kvs`, required: possibly]: This is the client secret used to authenticate to
-	Azure, which will be used to generate an access token. This parameter is not required if an access token is supplied
-	directly with the `--azure-key-vault-accesstoken` option or when using managed identities with `--azure-key-vault-managed-identity`. If this parameter is supplied, `--azure-key-vault-client-id` and `--azure-key-vault-tenant-id` must be supplied as well.
-	
-* `--azure-key-vault-tenant-id` [short: `-kvt`, required: possibly]: This is the tenant id used to authenticate to
-	Azure, which will be used to generate an access token. This parameter is not required if an access token is supplied
-	directly with the `--azure-key-vault-accesstoken` option or when using managed identities with `--azure-key-vault-managed-identity`. If this parameter is supplied, `--azure-key-vault-client-id` and `--azure-key-vault-client-secret` must be supplied as well.	
-
-* `--azure-key-vault-certificate` [short: `-kvc`, required: yes]: The name of the certificate used to perform the signing
-	operation.
-
-* `--azure-key-vault-accesstoken` [short: `-kva`, required: possibly]: An access token used to authenticate to Azure. This
-	can be used instead of the `--azure-key-vault-managed-identity`, `--azure-key-vault-client-id` and `--azure-key-vault-client-secret` options. This is useful
-	if AzureSignTool is being used as part of another program that is already authenticated and has an access token to
-	Azure.
-	
-* `--azure-key-vault-managed-identity` [short: `-kvm`, required: possibly]: Use the ambiant Managed Identity to authenticate to Azure. This
-	can be used instead of the `--azure-key-vault-accesstoken`, `--azure-key-vault-client-id` and `--azure-key-vault-client-secret` options. This is useful
-	if AzureSignTool is being used on a VM/service/CLI that is configured for managed identities to
-	Azure.	
+* `--gkms-app-credentials` [short: `-kac`, required: no]: The path to the google-apps credentials (JSON)
 
 * `--description` [short: `-d`, required: no]: A description of the signed content. This parameter serves the same purpose
 	as the `/d` option in the Windows SDK `signtool`. If this parameter is not supplied, the signature will not contain a
@@ -80,20 +37,11 @@ The `--help` or `sign --help` option provides more detail about each parameter.
 	* sha256
 	* sha384
 	* sha512
-
-* `--file-digest` [short: `-fd`, required: no]: The name of the digest algorithm used for hashing the file being signed.  The default
- 	value is `sha256`. Possible values:
-	* sha1
-	* sha256
-	* sha384
-	* sha512
 	
-* `--additional-certificates` [short: `-ac`, required: no]: A list of paths to additional certificates to aide in building a full chain
-	for the signing certificate. Azure SignTool will build a chain, either as deep as it can or to a trusted root. This will also use
+* `--additional-certificates` [short: `-ac`, required: yes]: A list of paths to additional certificates to aide in building a full chain
+	for the signing certificate. Cloud Sign Tool will build a chain, either as deep as it can or to a trusted root. This will also use
 	the Windows certificate store, in addition to any certificates specified with this option. Specifying this option does not guarantee
-	the inclusion of the certificate, only if it is part of the chain. To include multiple certificates, specify this option mulitple
-	times, such as `-ac file1.cer -ac file2.cer`. The files specified must be public certificates only. They cannot be PFX, PKCS12 or
-	PFX files.
+	the inclusion of the certificate, only if it is part of the chain. Cloud Sign Tool expects PEM formated certificates.
 	
 * `--verbose` [short: `-v`, required: no]: Include additional output in the log. This parameter does not accept a value and cannot be
 	combine with the `--quiet` option.
@@ -129,7 +77,7 @@ In most circumances, using the defaults for page hashing is recommended, which c
 ## Supported Formats
 
 This tool uses the same mechanisms for signing as the Windows SDK `signtool`. It will support the same formats as `signtool` supports.
-However, the formats that `azuresigntool` and `signtool` support vary by operating system and which Subject Interface Pacakges are
+However, the formats that `cloudsigntool` and `signtool` support vary by operating system and which Subject Interface Pacakges are
 present on the system.
 
 ## Exit Codes
