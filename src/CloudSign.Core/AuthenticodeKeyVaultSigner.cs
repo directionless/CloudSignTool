@@ -61,7 +61,10 @@ namespace CloudSign.Core
             }
             for (var i = 0; i < _chain.ChainElements.Count; i++)
             {
-                _certificateStore.Add(_chain.ChainElements[i].Certificate);
+                if (!_chain.ChainElements[i].Certificate.SubjectName.Equals(_chain.ChainElements[i].Certificate.IssuerName))
+                {
+                    _certificateStore.Add(_chain.ChainElements[i].Certificate);
+                }
             }
             _signCallback = SignCallback;
         }

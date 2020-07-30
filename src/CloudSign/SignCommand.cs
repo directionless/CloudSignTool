@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -42,7 +43,7 @@ namespace CloudSignTool
         [Option("-t | --timestamp-authenticode", "Specify the timestamp server's URL. If this option is not present, the signed file will not be timestamped.", CommandOptionType.SingleValue), UriValidator]
         public (bool Present, string Uri) AuthenticodeTimestamp { get; set; }
 
-        [Option("-ac | --additional-certificates", "Specify one or more certificates to include in the public certificate chain.", CommandOptionType.MultipleValue), FileExists, Required]
+        [Option("-ac | --additional-certificates", "Specify one or more certificates to include in the public certificate chain (PEM format).", CommandOptionType.MultipleValue), FileExists, Required]
         public string[] AdditionalCertificates { get; set; } = Array.Empty<string>();
 
         [Option("-v | --verbose", "Include additional output.", CommandOptionType.NoValue)]
@@ -297,19 +298,18 @@ namespace CloudSignTool
             {
                 foreach (var path in paths)
                 {
-
-                    var type = X509Certificate2.GetCertContentType(path);
-                    switch (type)
+                    string filecontent = File.ReadAllText(path);
+                    string[] certs = filecontent.Split(new string[] { "-----BEGIN CERTIFICATE-----", }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach(string cert in certs)
                     {
-                        case X509ContentType.Cert:
-                        case X509ContentType.Authenticode:
-                        case X509ContentType.SerializedCert:
-                            var certificate = new X509Certificate2(path);
-                            logger.LogTrace($"Including additional certificate {certificate.Thumbprint}.");
-                            collection.Add(certificate);
-                            break;
-                        default:
-                            return new Exception($"Specified file {path} is not a public valid certificate.");
+                        X509Certificate2 certificate = new X509Certificate2(Encoding.ASCII.GetBytes(cert));
+                        if(certificate.Subject.Equals(certificate.Issuer))
+                        {
+                            logger.LogTrace($"Skipping additional certificate {certificate.Thumbprint} (SELF-SIGNED!).");
+                            continue;
+                        }
+                        logger.LogTrace($"Including additional certificate {certificate.Thumbprint}.");
+                        collection.Add(certificate);
                     }
                 }
             }
